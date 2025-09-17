@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS `kopilot_zoom`.`host` (
         FOREIGN KEY (`email`) REFERENCES `user`(`email`)
         ON DELETE CASCADE ON UPDATE CASCADE,
 
-    UNIQUE KEY `uk_host_meeting_email` (`meeting_id`, `email`),
+    UNIQUE KEY `uk_host_meeting_email` (`meeting_id`, `email`)
 );
 
 CREATE TABLE IF NOT EXISTS `kopilot_zoom`.`recording` (

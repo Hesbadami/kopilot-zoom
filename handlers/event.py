@@ -141,7 +141,6 @@ async def event(data: dict):
                 rowsaffected = await db.aexecute_update(query, params)
 
             #TODO publish recording received.
-            ...
 
         await nc.pub(
             "zoom.event.processed",

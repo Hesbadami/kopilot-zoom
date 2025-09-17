@@ -8,7 +8,7 @@ import time
 from common.config import ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET
 
 import anyio
-from anyio import Semaphore
+from anyio import Semaphore, Lock
 import httpx
 from asynciolimiter import StrictLimiter
 
@@ -21,12 +21,12 @@ def decode_jwt(token):
             return {}
         
         payload = parts[1]
-        payload += '=' * (4 - len(payload) %4 )
+        payload += '=' * (4 - len(payload) % 4)
         decoded_bytes = urlsafe_b64decode(payload)
         return json.loads(decoded_bytes.decode('utf-8'))
     
     except Exception as e:
-        logger.error(f"Failed to decode JWT")
+        logger.error(f"Failed to decode JWT: {e}")
         return {}
 
 class ZoomWorkspace:
@@ -36,6 +36,7 @@ class ZoomWorkspace:
     _rate_limiter = StrictLimiter(10/1)
     _access_token: Optional[str] = None
     _token_expires_at: Optional[int] = None
+    _lock = Lock()
 
     @classmethod
     def is_token_expired(cls) -> bool:
@@ -79,6 +80,18 @@ class ZoomWorkspace:
                 return None
             
     @classmethod
+    async def ensure_valid_token(cls):
+
+        if not cls.is_token_expired():
+            return cls._access_token
+        
+        async with cls._lock:
+            if not cls.is_token_expired():
+                return cls._access_token
+            
+            return await cls._get_access_token()
+            
+    @classmethod
     async def call(cls, method: str, http_method: str = "GET", **kwargs):
 
         await cls._rate_limiter.wait()
@@ -86,6 +99,11 @@ class ZoomWorkspace:
         if cls.is_token_expired():
             await cls._get_access_token()
         access_token = cls._access_token
+
+        access_token = await cls.ensure_valid_token()
+        if not access_token:
+            logger.error("Failed to obtain access token")
+            return None
 
         encoded_method = quote(method, safe='/')
         url = f"{cls.api_url}{encoded_method}"

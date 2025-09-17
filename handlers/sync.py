@@ -1,13 +1,9 @@
 import logging
-from datetime import datetime
-import zoneinfo
 
 from common.nats_server import nc
 from common.mysql import MySQL as db
 from common.zoom import ZoomWorkspace as zm
 from common.utils import get_utc_datetime
-
-from anyio import create_task_group
 
 logger = logging.getLogger()
 
@@ -33,7 +29,7 @@ async def sync_meeting(data: dict):
     """
     rowid = await db.aexecute_insert(query, (host_email, host_id))
     if rowid:
-        logger.info(f"Inserted new zoom user {host_email}, syncing it's data.")
+        logger.info(f"Inserted new zoom user {host_email}, syncing its data.")
         await nc.pub(
             "zoom.sync.user",
             {
@@ -166,7 +162,7 @@ async def sync_user(data: dict):
     """
     params = (email, zoom_user_id, first_name, last_name, is_active)
 
-    rowid = await db.execute_insert(query, params)
+    rowid = await db.aexecute_insert(query, params)
     if rowid:
         logger.info(f"Inserted new zoom user {email} with complete sync data.")
     else:
@@ -188,7 +184,7 @@ async def sync_registrants(data: dict):
     if participants_page:
         participants_data = participants_page.get("participants")
         participated_emails = [
-            participant.get("email") for participant in participants_data
+            participant.get("email") for participant in participants_data if participant.get("email")
         ]
     
     params_list = []
