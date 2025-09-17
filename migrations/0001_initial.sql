@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS `kopilot_zoom`.`user` (
     `zoom_user_id` VARCHAR(255),
     `first_name` VARCHAR(255),
     `last_name` VARCHAR(255),
+
+    `is_active` BOOLEAN DEFAULT FALSE,
     `date_created` DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
     `date_modified` DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
 
@@ -24,6 +26,10 @@ CREATE TABLE IF NOT EXISTS `kopilot_zoom`.`meeting` (
     `is_manual` BOOLEAN DEFAULT FALSE,
 
     `is_deleted` BOOLEAN DEFAULT FALSE,
+
+    `actual_start_time` DATETIME(6),
+    `actual_end_time` DATETIME(6),
+    `actual_duration` INT,
 
     `date_created` DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
     `date_modified` DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
@@ -50,7 +56,7 @@ CREATE TABLE IF NOT EXISTS `kopilot_zoom`.`host` (
         FOREIGN KEY (`email`) REFERENCES `user`(`email`)
         ON DELETE CASCADE ON UPDATE CASCADE,
 
-    INDEX `idx_host_meeting_email` (`meeting_id`, `email`)
+    UNIQUE KEY `uk_host_meeting_email` (`meeting_id`, `email`),
 );
 
 CREATE TABLE IF NOT EXISTS `kopilot_zoom`.`recording` (
@@ -73,6 +79,8 @@ CREATE TABLE IF NOT EXISTS `kopilot_zoom`.`registrant` (
     `meeting_id` BIGINT NOT NULL,
     `email` VARCHAR(255) NOT NULL,
     `zoom_registrant_id` VARCHAR(255),
+    `first_name` VARCHAR(255),
+    `last_name` VARCHAR(255),
     `join_url` VARCHAR(500),
     `participated` BOOLEAN DEFAULT FALSE,
     `date_created` DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
@@ -82,30 +90,9 @@ CREATE TABLE IF NOT EXISTS `kopilot_zoom`.`registrant` (
         FOREIGN KEY (`meeting_id`) REFERENCES `meeting`(`meeting_id`) 
         ON DELETE CASCADE ON UPDATE CASCADE,
         
+    UNIQUE KEY `uk_registrant_meeting_email` (`meeting_id`, `email`),
     INDEX `idx_registrant_meeting_id` (`meeting_id`),
     INDEX `idx_registrant_zoom_registrant_id` (`zoom_registrant_id`),
     INDEX `idx_registrant_email` (`email`),
     INDEX `idx_registrant_participated` (`participated`)
-);
-
-CREATE TABLE IF NOT EXISTS `kopilot_zoom`.`log` (
-    `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    `meeting_id` BIGINT NOT NULL,
-    `registrant_id` BIGINT UNSIGNED,
-    `event_type` ENUM(
-        'joined_waiting', 'left_waiting', 
-        'meeting_started', 'meeting_ended', 
-        'joined_meeting', 'left_meeting'
-    ) NOT NULL,
-    `timestamp` DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
-
-    CONSTRAINT `fk_log_meeting_id` 
-        FOREIGN KEY (`meeting_id`) REFERENCES `meeting`(`meeting_id`) 
-        ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT `fk_log_registrant_id` 
-        FOREIGN KEY (`registrant_id`) REFERENCES `registrant`(`id`)
-        ON DELETE CASCADE ON UPDATE CASCADE,
-
-    INDEX `idx_log_meeting_id` (`meeting_id`),
-    INDEX `idx_log_registrant_id` (`registrant_id`)
 );

@@ -3,6 +3,7 @@ import logging
 
 from common.nats_server import nc
 from common.mysql import MySQL as db
+from common.utils import get_utc_datetime
 
 logger = logging.getLogger()
 
@@ -42,17 +43,13 @@ async def event(data: dict):
                 await nc.pub("zoom.sync.meeting", {
                     "meeting_id": meeting_id
                 })
+        
         elif event_type == "meeting.deleted":
             meeting_id = object.get("id")
-            meeting = await db.aexecute_query(
-                "SELECT * FROM `meeting` WHERE meeting_id = %s LIMIT 1;",
-                (meeting_id,),
-                fetch_one=True
+            rowsaffected = await db.aexecute_update(
+                "UPDATE `kopilot_zoom`.`meeting` SET `is_deleted` = TRUE WHERE meeting_id = %s;",
+                (meeting_id, )
             )
-            if not meeting:
-                await nc.pub("zoom.sync.meeting", {
-                    "meeting_id": meeting_id
-                })
 
         elif event_type == "meeting.registration_created":
             meeting_id = object.get("id")
@@ -71,22 +68,17 @@ async def event(data: dict):
             
         elif event_type == "meeting.started":
             meeting_id = object.get("id")
-            query = """
-            INSERT INTO `kopilot_zoom`.`log` (
-                `meeting_id`,
-                `registrant_id`,
-                `event_type`,
-                `timestamp`
+            actual_start_time = get_utc_datetime(
+                object.get("start_time"),
+                object.get("timezone")
             )
-            SELECT 
-                r.`meeting_id`,
-                r.`id` as `registrant_id`,
-                'meeting_started' as `event_type`,
-                %s as `timestamp`
-            FROM `kopilot_zoom`.`registrant` r
-            WHERE r.`meeting_id` = %s;
+            query = """
+            UPDATE `kopilot_zoom`.`meeting`
+            SET
+                `actual_start_time` = %s
+            WHERE `meeting_id` = %s;
             """
-            params = (event_time, meeting_id)
+            params = (actual_start_time, meeting_id)
             rowsaffected = await db.aexecute_update(query, params)
 
         elif event_type == "meeting.participant_joined":
@@ -103,77 +95,28 @@ async def event(data: dict):
                 query,
                 (meeting_id, email)
             )
-
-            query = """
-            INSERT INTO `kopilot_zoom`.`log` (
-                `meeting_id`,
-                `registrant_id`,
-                `event_type`,
-                `timestamp`
-            )
-            SELECT 
-                r.`meeting_id`,
-                r.`id` as `registrant_id`,
-                'joined_meeting' as `event_type`,
-                %s as `timestamp`
-            FROM `kopilot_zoom`.`registrant` r
-            WHERE r.`meeting_id` = %s AND r.`email` = %s;
-            """
-            params = (event_time, meeting_id, email)
-            rowsaffected = await db.aexecute_update(query, params)
-
-        elif event_type == "meeting.participant_left":
-            meeting_id = object.get("id")
-            participant = object.get("participant", {})
-            email = participant.get("email")
-
-            query = """
-            INSERT INTO `kopilot_zoom`.`log` (
-                `meeting_id`,
-                `registrant_id`,
-                `event_type`,
-                `timestamp`
-            )
-            SELECT 
-                r.`meeting_id`,
-                r.`id` as `registrant_id`,
-                'left_meeting' as `event_type`,
-                %s as `timestamp`
-            FROM `kopilot_zoom`.`registrant` r
-            WHERE r.`meeting_id` = %s AND r.`email` = %s;
-            """
-            params = (event_time, meeting_id, email)
-            rowsaffected = await db.aexecute_update(query, params)
             
         elif event_type == "meeting.ended":
             meeting_id = object.get("id")
-            meeting = await db.aexecute_query(
-                "SELECT * FROM `meeting` WHERE meeting_id = %s LIMIT 1;",
-                (meeting_id,),
-                fetch_one=True
+            actual_start_time = get_utc_datetime(
+                object.get("start_time"),
+                object.get("timezone")
             )
-            if not meeting:
-                await nc.pub("zoom.sync.meeting", {
-                    "meeting_id": meeting_id
-                })
-            else:
-                query = """
-                INSERT INTO `kopilot_zoom`.`log` (
-                    `meeting_id`,
-                    `registrant_id`,
-                    `event_type`,
-                    `timestamp`
-                )
-                SELECT 
-                    r.`meeting_id`,
-                    r.`id` as `registrant_id`,
-                    'meeting_ended' as `event_type`,
-                    %s as `timestamp`
-                FROM `kopilot_zoom`.`registrant` r
-                WHERE r.`meeting_id` = %s;
-                """
-                params = (event_time, meeting_id)
-                rowsaffected = await db.aexecute_update(query, params)
+            actual_end_time = get_utc_datetime(
+                object.get("end_time"),
+                object.get("timezone")
+            )
+            duration = object.get("duration")
+            query = """
+            UPDATE `kopilot_zoom`.`meeting`
+            SET
+                `actual_start_time` = %s,
+                `actual_end_time` = %s,
+                `duration` = %s
+            WHERE `meeting_id` = %s;
+            """
+            params = (actual_start_time, actual_end_time, duration, meeting_id)
+            rowsaffected = await db.aexecute_update(query, params)
             
         elif event_type == "recording.completed":
             meeting_id = object.get("id")
@@ -197,6 +140,7 @@ async def event(data: dict):
                 params = (share_url, duration, meeting_id)
                 rowsaffected = await db.aexecute_update(query, params)
 
+            #TODO publish recording received.
             ...
 
         await nc.pub(
